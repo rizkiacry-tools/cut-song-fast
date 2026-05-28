@@ -5,18 +5,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 
 
 DOWNLOAD_DIR = os.path.expanduser("~/storage/downloads")
-
-
-def parse_mmss(mmss: str) -> str:
-    if not re.fullmatch(r"\d{4}", mmss):
-        print(f"error: invalid time format '{mmss}' — need 4 digits MMSS", file=sys.stderr)
-        sys.exit(1)
-    m = int(mmss[:2])
-    s = int(mmss[2:])
-    return f"{m}:{s:02d}"
 
 
 def check_dep(name: str) -> None:
@@ -116,6 +109,60 @@ def get_next_filename(directory: str) -> str:
     return f"{max_num + 1:04d}.mp3"
 
 
+def video_id(url: str) -> str:
+    m = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", url)
+    return m.group(1) if m else ""
+
+
+def fetch_nonmusic_segments(vid: str) -> list:
+    if not vid:
+        return []
+    api = f"https://sponsor.ajay.app/api/skipSegments?videoID={vid}&categories=%5B%22music_offtopic%22%5D"
+    try:
+        req = urllib.request.Request(api, headers={"User-Agent": "cut-song-fast/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            return [s["segment"] for s in data if s.get("category") == "music_offtopic"]
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, OSError):
+        return []
+
+
+def mmss_to_sec(mmss: str) -> int:
+    if not re.fullmatch(r"\d{4}", mmss):
+        print(f"error: invalid time format '{mmss}' — need 4 digits MMSS", file=sys.stderr)
+        sys.exit(1)
+    return int(mmss[:2]) * 60 + int(mmss[2:])
+
+
+def sec_to_ts(sec: int) -> str:
+    return f"{sec // 60}:{sec % 60:02d}"
+
+
+def adjust_seconds(start_s: int, end_s: int, segments: list) -> tuple:
+    import math
+    dur = end_s - start_s
+    adj_start = float(start_s)
+    adj_end = float(end_s)
+
+    for seg in sorted(segments, key=lambda s: s[0]):
+        seg_s, seg_e = float(seg[0]), float(seg[1])
+
+        if seg_s <= adj_start < seg_e:
+            shift = seg_e - adj_start
+            adj_start = seg_e
+            adj_end = adj_start + dur
+        elif seg_s < adj_end <= seg_e:
+            adj_end = seg_s
+        elif adj_start < seg_s and seg_e < adj_end:
+            adj_end -= (seg_e - seg_s)
+
+    if adj_start >= adj_end:
+        print("error: requested range is entirely non-music (SponsorBlock)", file=sys.stderr)
+        sys.exit(1)
+
+    return math.ceil(adj_start), math.ceil(adj_end)
+
+
 def main() -> None:
     if len(sys.argv) != 4:
         print("usage: python3 cut.py <query> <start_MMSS> <end_MMSS>", file=sys.stderr)
@@ -125,14 +172,26 @@ def main() -> None:
     start = sys.argv[2]
     end = sys.argv[3]
 
-    start_ts = parse_mmss(start)
-    end_ts = parse_mmss(end)
+    start_s = mmss_to_sec(start)
+    end_s = mmss_to_sec(end)
 
     tmpdir = tempfile.mkdtemp(prefix="cutsong_")
     try:
         print(f"searching YouTube for '{query}'...")
         url = search_youtube(query)
         print(f"found: {url}")
+
+        vid = video_id(url)
+        segments = fetch_nonmusic_segments(vid)
+        if segments:
+            new_s, new_e = adjust_seconds(start_s, end_s, segments)
+            if new_s != start_s or new_e != end_s:
+                print(f"SponsorBlock: adjusted {sec_to_ts(start_s)}→{sec_to_ts(new_s)} {sec_to_ts(end_s)}→{sec_to_ts(new_e)} (skipping non-music)")
+                start_s, end_s = new_s, new_e
+
+        start_ts = sec_to_ts(start_s)
+        end_ts = sec_to_ts(end_s)
+
         print("downloading...")
         audio_path = download_audio(url, tmpdir)
         print(f"cutting {start_ts} → {end_ts}...")
