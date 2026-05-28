@@ -27,22 +27,47 @@ def check_dep(name: str) -> None:
 
 def search_youtube(query: str) -> str:
     check_dep("yt-dlp")
-    cmd = ["yt-dlp", "--no-warnings", f"ytsearch5:{query}", "--dump-json", "--max-downloads", "5"]
+    cmd = ["yt-dlp", "--no-warnings", f"ytsearch10:{query}", "--dump-json", "--max-downloads", "10"]
     result = subprocess.run(cmd, capture_output=True, text=True)
     try:
         lines = result.stdout.strip().splitlines()
-        best = max(
-            (json.loads(line) for line in lines),
-            key=lambda v: v.get("view_count") or 0
-        )
-        return best["webpage_url"]
-    except (json.JSONDecodeError, IndexError, KeyError, ValueError):
+        videos = [json.loads(line) for line in lines if line]
+    except (json.JSONDecodeError, IndexError, ValueError):
         err = result.stderr.strip()
         msg = f"error: no YouTube results for '{query}'"
         if err:
             msg += f"\n{err}"
         print(msg, file=sys.stderr)
         sys.exit(1)
+
+    query_tokens = [t.lower() for t in query.split() if len(t) > 1]
+
+    # identify band/artist tokens: query tokens that appear in any result's channel name
+    band_tokens = set()
+    for v in videos:
+        ch = (v.get("channel") or "").lower()
+        for t in query_tokens:
+            if t in ch:
+                band_tokens.add(t)
+
+    def score(v):
+        title = (v.get("title") or "").lower()
+        desc = (v.get("description") or "").lower()
+        ch = (v.get("channel") or "").lower()
+        views = v.get("view_count") or 0
+
+        title_match = sum(1 for t in query_tokens if t in title)
+        desc_match = sum(1 for t in query_tokens if t in desc)
+        band_in_ch = sum(1 for t in band_tokens if t in ch)
+
+        content = title_match * 10 + desc_match * 3
+
+        if band_in_ch >= 2 or (band_in_ch >= 1 and len(band_tokens) <= 1):
+            return (1000 + content, views)
+        return (content, views)
+
+    best = max(videos, key=score)
+    return best["webpage_url"]
 
 
 def download_audio(url: str, outdir: str) -> str:
