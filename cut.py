@@ -26,36 +26,47 @@ def check_dep(name: str) -> None:
 
 
 def search_youtube(query: str) -> str:
-    cmd = ["yt-dlp", f"ytsearch:{query}", "--dump-json", "--max-downloads", "1"]
+    check_dep("yt-dlp")
+    cmd = ["yt-dlp", "--no-warnings", f"ytsearch5:{query}", "--dump-json", "--max-downloads", "5"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
     try:
-        out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True)
-    except subprocess.CalledProcessError:
-        print(f"error: no YouTube results for '{query}'", file=sys.stderr)
+        lines = result.stdout.strip().splitlines()
+        best = max(
+            (json.loads(line) for line in lines),
+            key=lambda v: v.get("view_count") or 0
+        )
+        return best["webpage_url"]
+    except (json.JSONDecodeError, IndexError, KeyError, ValueError):
+        err = result.stderr.strip()
+        msg = f"error: no YouTube results for '{query}'"
+        if err:
+            msg += f"\n{err}"
+        print(msg, file=sys.stderr)
         sys.exit(1)
-    data = json.loads(out.strip().splitlines()[0])
-    return data["webpage_url"]
 
 
 def download_audio(url: str, outdir: str) -> str:
     check_dep("yt-dlp")
     outtmpl = os.path.join(outdir, "%(id)s.%(ext)s")
     cmd = [
-        "yt-dlp", "-f", "bestaudio", "--extract-audio",
+        "yt-dlp", "--no-warnings", "-f", "bestaudio", "--extract-audio",
         "--audio-format", "mp3", "--audio-quality", "0",
         "-o", outtmpl, url
     ]
-    subprocess.run(cmd, check=True, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
     for f in os.listdir(outdir):
         if f.endswith(".mp3"):
             return os.path.join(outdir, f)
-    print("error: downloaded file not found", file=sys.stderr)
+    err = result.stderr.strip()
+    msg = "error: yt-dlp download failed"
+    if err:
+        msg += f"\n{err}"
+    print(msg, file=sys.stderr)
     sys.exit(1)
 
 
-def cut_audio(inpath: str, start: str, end: str, outpath: str) -> None:
+def cut_audio(inpath: str, start_ts: str, end_ts: str, outpath: str) -> None:
     check_dep("ffmpeg")
-    start_ts = parse_mmss(start)
-    end_ts = parse_mmss(end)
     cmd = [
         "ffmpeg", "-ss", start_ts, "-to", end_ts,
         "-i", inpath, "-q:a", "0", "-map", "a", "-y", outpath
@@ -89,8 +100,8 @@ def main() -> None:
     start = sys.argv[2]
     end = sys.argv[3]
 
-    parse_mmss(start)
-    parse_mmss(end)
+    start_ts = parse_mmss(start)
+    end_ts = parse_mmss(end)
 
     tmpdir = tempfile.mkdtemp(prefix="cutsong_")
     try:
@@ -99,9 +110,9 @@ def main() -> None:
         print(f"found: {url}")
         print("downloading...")
         audio_path = download_audio(url, tmpdir)
-        print(f"cutting {start} → {end}...")
+        print(f"cutting {start_ts} → {end_ts}...")
         cut_path = os.path.join(tmpdir, "cut.mp3")
-        cut_audio(audio_path, start, end, cut_path)
+        cut_audio(audio_path, start_ts, end_ts, cut_path)
         outname = get_next_filename(DOWNLOAD_DIR)
         outpath = os.path.join(DOWNLOAD_DIR, outname)
         shutil.copy2(cut_path, outpath)
