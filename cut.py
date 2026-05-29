@@ -167,7 +167,7 @@ def main() -> None:
     if len(sys.argv) == 3 and sys.argv[1] == "search":
         url = search_youtube(sys.argv[2])
         print(f"opening: {url}", file=sys.stderr)
-        print(url)
+        subprocess.run(["termux-open-url", url])
         return
 
     if len(sys.argv) != 4:
