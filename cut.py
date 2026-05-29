@@ -48,16 +48,41 @@ def search_youtube(query: str) -> str:
         desc = (v.get("description") or "").lower()
         ch = (v.get("channel") or "").lower()
         views = v.get("view_count") or 0
+        followers = v.get("channel_follower_count") or 0
+        verified = v.get("channel_is_verified") or False
 
         title_match = sum(1 for t in query_tokens if t in title)
         desc_match = sum(1 for t in query_tokens if t in desc)
+        all_match = title_match + desc_match
         band_in_ch = sum(1 for t in band_tokens if t in ch)
 
-        content = title_match * 10 + desc_match * 3
+        content = title_match * 10 + desc_match * 5
+
+        # derivative penalty — covers, lyrics, tabs, reuploads
+        derivative_kw = ["cover", "lyrics", "tabs", "vietsub", "piano",
+                         "instrumental", "karaoke", "reaction", "remix", "tutorial"]
+        query_lower = query.lower()
+        is_derivative = any(kw in title for kw in derivative_kw) and not any(kw in query_lower for kw in derivative_kw)
+        if is_derivative and not band_in_ch:
+            content -= 25
+
+        # large verified channel must match most query tokens or it's a diff song
+        if verified and followers > 50000 and band_in_ch == 0 and all_match < min(2, len(query_tokens)):
+            return (-1, 0)
+
+        # channel name in title = strongest signal of official upload
+        ch_in_title = ch in title
 
         if band_in_ch >= 2 or (band_in_ch >= 1 and len(band_tokens) <= 1):
-            return (1000 + content, views)
-        return (content, views)
+            authority = 1000
+        elif ch_in_title and (verified or followers >= 50000):
+            authority = 500
+        elif verified and all_match > 0:
+            authority = min(followers / 100000, 5)
+        else:
+            authority = 0
+
+        return (content + authority, views)
 
     best = max(videos, key=score)
     return best["webpage_url"]
