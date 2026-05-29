@@ -164,8 +164,15 @@ def adjust_seconds(start_s: int, end_s: int, segments: list) -> tuple:
 
 
 def main() -> None:
+    if len(sys.argv) == 3 and sys.argv[1] == "search":
+        url = search_youtube(sys.argv[2])
+        print(f"opening: {url}", file=sys.stderr)
+        print(url)
+        return
+
     if len(sys.argv) != 4:
         print("usage: python3 cut.py <query> <start_MMSS> <end_MMSS>", file=sys.stderr)
+        print("       python3 cut.py search <query>", file=sys.stderr)
         sys.exit(1)
 
     query = sys.argv[1]
