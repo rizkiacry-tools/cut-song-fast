@@ -1,5 +1,6 @@
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -192,7 +193,8 @@ def main() -> None:
     if len(sys.argv) == 3 and sys.argv[1] == "search":
         url = search_youtube(sys.argv[2])
         print(f"opening: {url}", file=sys.stderr)
-        subprocess.run(["termux-open-url", url])
+        opener = {"Linux": "xdg-open", "Darwin": "open"}.get(platform.system(), "termux-open-url")
+        subprocess.run([opener, url])
         return
 
     if len(sys.argv) != 4:
