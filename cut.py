@@ -90,6 +90,16 @@ def search_youtube(query: str) -> str:
         return (content + authority, views)
 
     best = max(videos, key=score)
+    # fallback: band_tokens empty AND no authority signal (score < 200 = no
+    # ch_in_title/band_in_ch bonus) → highest-viewed video matching >= min(2, len(tokens))
+    if not band_tokens and all(score(v)[0] < 200 for v in videos):
+        min_tokens = min(2, len(query_tokens))
+        relevant = [
+            v for v in videos
+            if sum(1 for t in query_tokens if t in (v.get("title") or "").lower()) >= min_tokens
+        ]
+        if relevant:
+            best = max(relevant, key=lambda v: (v.get("view_count") or 0))
     return best["webpage_url"]
 
 
