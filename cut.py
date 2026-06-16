@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 
 
-DOWNLOAD_DIR = os.path.expanduser("~/storage/downloads")
+DOWNLOAD_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def check_dep(name: str) -> None:
