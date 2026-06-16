@@ -61,18 +61,22 @@ def search_youtube(query: str) -> str:
 
         # derivative penalty — covers, lyrics, tabs, reuploads
         derivative_kw = ["cover", "lyrics", "tabs", "vietsub", "piano",
-                         "instrumental", "karaoke", "reaction", "remix", "tutorial"]
+                         "instrumental", "karaoke", "reaction", "remix", "tutorial",
+                         "lời việt", "việt", "sub español", "letra", "tekst", "subtitle"]
         query_lower = query.lower()
         is_derivative = any(kw in title for kw in derivative_kw) and not any(kw in query_lower for kw in derivative_kw)
         if is_derivative and not band_in_ch:
-            content -= 25
+            content -= 100
 
         # large verified channel must match most query tokens or it's a diff song
-        if verified and followers > 50000 and band_in_ch == 0 and all_match < min(2, len(query_tokens)):
+        # only apply when band_tokens identified — prevents killing JP/CN titles
+        if band_tokens and verified and followers > 50000 and band_in_ch == 0 and all_match < min(2, len(query_tokens)):
             return (-1, 0)
 
         # channel name in title = strongest signal of official upload
-        ch_in_title = ch in title
+        # match any significant segment (e.g. "MAISONdes" in "... / maisondes")
+        ch_parts = [p.strip() for p in re.split(r'[/\-|·•]', ch) if len(p.strip()) > 3]
+        ch_in_title = any(p in title for p in ch_parts) or ch in title
 
         if band_in_ch >= 2 or (band_in_ch >= 1 and len(band_tokens) <= 1):
             authority = 1000
