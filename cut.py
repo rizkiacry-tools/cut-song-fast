@@ -37,11 +37,12 @@ def search_youtube(query: str) -> str:
     query_tokens = [t.lower() for t in query.split() if len(t) > 1]
 
     # identify band/artist tokens: query tokens that appear in any result's channel name
+    # short tokens (< 3 chars like "op", "ed", "tv") excluded — too many false substring matches
     band_tokens = set()
     for v in videos:
         ch = (v.get("channel") or "").lower()
         for t in query_tokens:
-            if t in ch:
+            if len(t) >= 3 and t in ch:
                 band_tokens.add(t)
 
     def score(v):
@@ -90,9 +91,9 @@ def search_youtube(query: str) -> str:
         return (content + authority, views)
 
     best = max(videos, key=score)
-    # fallback: band_tokens empty AND no authority signal (score < 200 = no
-    # ch_in_title/band_in_ch bonus) → highest-viewed video matching >= min(2, len(tokens))
-    if not band_tokens and all(score(v)[0] < 200 for v in videos):
+    # fallback: no authority signal, no band_tokens, AND winner has <10k views
+    # → likely noise; pick highest-viewed video matching >= min(2, len(tokens))
+    if not band_tokens and all(score(v)[0] < 200 for v in videos) and (best.get("view_count") or 0) < 10000:
         min_tokens = min(2, len(query_tokens))
         relevant = [
             v for v in videos
