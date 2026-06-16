@@ -61,7 +61,7 @@ def search_youtube(query: str) -> str:
 
         # derivative penalty — covers, lyrics, tabs, reuploads
         derivative_kw = ["cover", "lyrics", "tabs", "vietsub", "piano",
-                         "instrumental", "karaoke", "reaction", "remix", "tutorial",
+                         "instrumental", "karaoke", "react", "remix", "tutorial",
                          "lời việt", "việt", "sub español", "letra", "tekst", "subtitle"]
         query_lower = query.lower()
         is_derivative = any(kw in title for kw in derivative_kw) and not any(kw in query_lower for kw in derivative_kw)
